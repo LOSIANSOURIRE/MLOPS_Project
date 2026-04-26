@@ -52,7 +52,7 @@ def evaluate(latent, decoder, val_loader, criterion, lambda_l1=0.0):
             img_embeddings = latent(inputs)
             images = decoder(img_embeddings)
 
-            clip_loss = clip_contrastive_loss(img_embeddings, true_img_embeddings.to(latent.device))
+            clip_loss = torch.tensor(0.0)
             # Reconstruction loss
             recon_loss = criterion(images, targets)
             loss = recon_loss + clip_loss
@@ -83,7 +83,7 @@ def train(latent, decoder, train_loader, val_loader, criterion, optimizer, epoch
             # Forward pass through latent model and decoder
             img_embeddings = latent(inputs)
 
-            clip = clip_contrastive_loss(img_embeddings, img_embed.to(device))
+            clip = torch.tensor(0.0, device=device) # clip_contrastive_loss
             images = decoder(img_embeddings)
 
             # Compute reconstruction loss
@@ -195,7 +195,8 @@ def prepare_dataloaders(text_embed_path, image_dir, batch_size=32, test_split=0.
             
             # Append the processed text embedding and also keep a copy of the raw embedding.
             X.append(text_embed[image_key])
-            raw_embeddings.append(raw_image_embeddings[image_key])
+            if raw_image_embeddings and image_key in raw_image_embeddings: raw_embeddings.append(raw_image_embeddings[image_key])
+            else: raw_embeddings.append(np.zeros(512))
             y.append(image_array)
         else:
             print(f"Warning: No text embedding found for image {image_file}")

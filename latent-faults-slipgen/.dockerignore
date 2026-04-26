@@ -1,0 +1,11 @@
+venv/
+.venv/
+__pycache__/
+*.npy
+*.pkl
+Dataset/
+embeddings/
+mlruns/
+plots/
+models/
+.git/

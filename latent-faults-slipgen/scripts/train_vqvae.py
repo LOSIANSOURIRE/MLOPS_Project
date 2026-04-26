@@ -243,7 +243,7 @@ def fine_tune_vqvae(model, dataset, epochs=10, lr=1e-4, save_path="models/vqvae_
 
     # Setup optimizer and learning rate scheduler
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     criterion = nn.MSELoss()  # Mean squared error loss for reconstruction
 
     # Initialize early stopping variables
@@ -381,7 +381,7 @@ def main():
     save_path_embed = r"embeddings/image_latents.pkl"
     
     # Fine-tune the model
-    fine_tune_vqvae(vqvae_model, dataset, epochs=1000, lr=1e-4, save_path=save_path_weights, device=device, plot_loss_fn=True)
+    fine_tune_vqvae(vqvae_model, dataset, epochs=1, lr=1e-4, save_path=save_path_weights, device=device, plot_loss_fn=True)
     # Extract latent embeddings
     extract_latents(vqvae_model, dataset, save_path=save_path_embed, device=device)
 

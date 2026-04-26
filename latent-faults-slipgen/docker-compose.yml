@@ -1,6 +1,6 @@
 version: '3.8'
 services:
-  airflow-webserver:
+  airflow:
     build: .
     restart: always
     ports:
@@ -10,13 +10,4 @@ services:
       - .:/app
     environment:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
-    command: webserver
-  airflow-scheduler:
-    build: .
-    restart: always
-    volumes:
-      - ./airflow_dags:/opt/airflow/dags
-      - .:/app
-    environment:
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-    command: scheduler
+    command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && airflow scheduler & airflow webserver"

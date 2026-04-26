@@ -1,0 +1,23 @@
+schema: '2.0'
+stages:
+  train:
+    cmd: python scripts/train_mapper_decoder.py --learning_rate 0.001 
+      --batch_size 32
+    deps:
+    - path: scripts/train_mapper_decoder.py
+      hash: md5
+      md5: bedc5b8ffe5b9d104564be9ea70bb6dc
+      size: 10906
+    params:
+      params.yaml:
+        train.batch_size: 32
+        train.learning_rate: 0.001
+    outs:
+    - path: models/decoder_model.pth
+      hash: md5
+      md5: bde0e46373c2e5ce3ae40545d71eddb2
+      size: 205422
+    - path: models/latent_model.pth
+      hash: md5
+      md5: b56245e4b613e2809abaa3f1ba88a921
+      size: 1408145
