@@ -1,0 +1,54 @@
+.venv/
+myvenv/
+.vscode/
+__pycache__/
+*.pyc
+venv/
+# Local temp files
+temp_del/
+tmp*/
+
+# Local model/cache artifacts
+models/keras_vqvae/
+models/minilm/
+pre-trained/
+hf-cache/
+embeddings/
+scaler_x.pkl
+embeddings/image_latents.pkl
+models/trial_*_latent_model.pth
+models/trial_*_decoder_model.pth
+
+# Analysis/experiment notebooks and scripts
+*.ipynb
+analyze_text_vec.py
+analysis.ipynb
+
+# Generated metrics/plots
+error_metrics/
+plots/
+test_metrics.json
+parameter_distributions.png
+text_vec_analysis.npy
+
+# Generated inference/train outputs
+Dataset/
+Dataset/predicted_images*/
+Dataset/reconstructed_images/
+Dataset/slip_arrays_inference/
+Dataset/filtered_images_train/
+Dataset/filtered_images_test/
+
+# Local docs and scratch notes
+help.txt
+Latent_Faults_Full_Manuscript.pdf
+CE6691 AND CE6692 FINAL PPT (1).pdf
+assets/earthquake_spread.png
+assets/publication_earthquake_map.pdf
+
+# Trained model binaries (configs are kept)
+models/*.pth
+
+# README visual assets (keep tracked)
+!report_pics/
+!report_pics/*.png

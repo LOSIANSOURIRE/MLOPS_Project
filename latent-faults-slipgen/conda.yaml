@@ -1,0 +1,17 @@
+name: slipgen-env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - mlflow
+    - dvc
+    - torch
+    - pandas
+    - numpy
+    - scikit-learn
+    - tqdm
+    - Pillow
+    - optuna

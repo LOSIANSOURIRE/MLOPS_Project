@@ -1,0 +1,11 @@
+stages:
+  train:
+    cmd: python scripts/train_mapper_decoder.py --learning_rate ${train.learning_rate} --batch_size ${train.batch_size}
+    deps:
+      - scripts/train_mapper_decoder.py
+    params:
+      - train.learning_rate
+      - train.batch_size
+    outs:
+      - models/latent_model.pth
+      - models/decoder_model.pth
