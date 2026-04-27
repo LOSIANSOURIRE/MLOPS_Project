@@ -1,0 +1,53 @@
+# Central Configuration File for Latent Faults Slipgen Pipeline
+
+project:
+  name: "latent-faults-slipgen"
+  version: "1.0.0"
+
+paths:
+  data_raw: "data/raw/"
+  data_processed: "data/processed/"
+  model_dir: "models/"
+  assets_dir: "assets/"
+  mlruns_dir: "mlruns/"
+  logs_dir: "logs/"
+
+model:
+  latent_dim: 64
+  hidden_dims: [128, 256, 512]
+  dropout_rate: 0.2
+
+train:
+  batch_size: 32
+  learning_rate: 0.001
+  epochs: 100
+  weight_decay: 1e-5
+  seed: 42
+  device: "cuda" # or "cpu"
+
+inference:
+  default_mw: 5.5
+  mw_min: 1.0
+  mw_max: 10.0
+  dz_min: 0.5
+  dz_max: 2.0
+  grid_size_x: 50
+  grid_size_z: 50
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  log_level: "info"
+
+frontend:
+  port: 3000
+
+monitoring:
+  prometheus_port: 9090
+  grafana_port: 3001
+  alertmanager_port: 9093
+
+airflow:
+  airflow_home: "dags/"
+  dags_folder: "dags/"

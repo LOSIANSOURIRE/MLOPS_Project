@@ -66,7 +66,7 @@ def objective(trial):
     optimizer = optim.Adam(list(latent.parameters()) + list(decoder.parameters()), lr=learning_rate)
 
     # Train the model using a smaller number of epochs to make tuning faster.
-    tuning_epochs = 10000
+    tuning_epochs = 500
     early_stopping_patience = 60
     print(f"\nTrial with: lr={learning_rate:.5f}, dropout={dropout_prob:.2f}, lambda_l1={lambda_l1:.7f}, hidden_dims={hidden_dims}")
 
@@ -83,19 +83,19 @@ def objective(trial):
     # MLflow integration logging all parameters directly into our system!
     import mlflow
     from mlflow.exceptions import MlflowException
-    try:
-        with mlflow.start_run(nested=True):
-            mlflow.log_params({
-                "learning_rate": learning_rate,
-                "dropout_prob": dropout_prob,
-                "lambda_l1": lambda_l1,
-                "hidden_dims": str(hidden_dims),
-                "n_layers": n_layers
-            })
-            mlflow.log_metric("val_loss", final_val_loss)
-            mlflow.log_metric("trial_number", trial.number)
-    except MlflowException:
-        pass # Handle when run natively without pre-calling start_run in the outer scope
+    
+    # Ensure nested=True works seamlessly
+    run_name = f"Trial_{trial.number}"
+    with mlflow.start_run(nested=True, run_name=run_name):
+        mlflow.log_params({
+            "learning_rate": learning_rate,
+            "dropout_prob": dropout_prob,
+            "lambda_l1": lambda_l1,
+            "hidden_dims": str(hidden_dims),
+            "n_layers": n_layers
+        })
+        mlflow.log_metric("val_loss", final_val_loss)
+        mlflow.log_metric("trial_number", trial.number)
         
     print(f"Trial finished with validation loss: {final_val_loss:.4f}\n")
     return final_val_loss
@@ -127,6 +127,26 @@ def main():
             
         mlflow.log_params(best_logs)
         mlflow.log_metric("best_val_loss", trial.value)
+
+        # Generate and log Optuna plots to MLflow
+        try:
+            from optuna.visualization import plot_optimization_history, plot_param_importances, plot_slice, plot_parallel_coordinate
+            
+            fig_history = plot_optimization_history(study)
+            mlflow.log_figure(fig_history, "optimization_history.html")
+            
+            if len(study.trials) > 1:
+                fig_importances = plot_param_importances(study)
+                mlflow.log_figure(fig_importances, "param_importances.html")
+            
+            fig_slice = plot_slice(study)
+            mlflow.log_figure(fig_slice, "slice_plot.html")
+            
+            fig_parallel = plot_parallel_coordinate(study)
+            mlflow.log_figure(fig_parallel, "parallel_coordinate.html")
+            print("Successfully logged Optuna visualizations to MLflow.")
+        except Exception as e:
+            print(f"Could not generate or log Optuna plots: {e}")
 
     # Save the best hyperparameters in JSON format.
     best_params = trial.params
