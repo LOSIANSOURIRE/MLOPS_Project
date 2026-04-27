@@ -212,10 +212,10 @@
 # torch==2.7.1
 # torchvision==0.22.1
 # tornado==6.5.2
-# tqdm @ file:///croot/tqdm_1738943501192/work
+
 # traitlets==5.14.3
 # transformers==4.57.0
-# triton==3.3.1
+# # triton==3.3.1
 # truststore @ file:///croot/truststore_1753907171582/work
 # typer @ file:///work/perseverance-python-buildout/croot/typer_1728397851651/work
 # types-python-dateutil==2.9.0.20251008
@@ -366,7 +366,7 @@ torchvision==0.22.1
 tornado
 tqdm
 transformers==4.57.0
-triton
+# triton
 tzdata
 urllib3
 uv

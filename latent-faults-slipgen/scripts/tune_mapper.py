@@ -79,21 +79,54 @@ def objective(trial):
 
     # Evaluate the tuned model on the validation set.
     final_val_loss = evaluate(latent, decoder, val_loader, criterion, lambda_l1)
+    
+    # MLflow integration logging all parameters directly into our system!
+    import mlflow
+    from mlflow.exceptions import MlflowException
+    try:
+        with mlflow.start_run(nested=True):
+            mlflow.log_params({
+                "learning_rate": learning_rate,
+                "dropout_prob": dropout_prob,
+                "lambda_l1": lambda_l1,
+                "hidden_dims": str(hidden_dims),
+                "n_layers": n_layers
+            })
+            mlflow.log_metric("val_loss", final_val_loss)
+            mlflow.log_metric("trial_number", trial.number)
+    except MlflowException:
+        pass # Handle when run natively without pre-calling start_run in the outer scope
+        
     print(f"Trial finished with validation loss: {final_val_loss:.4f}\n")
     return final_val_loss
 
 def main():
+    import mlflow
+    
+    # Establish local unified tracking mapping directly out to Docker's MLFlow paths
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_experiment("Mapper_Hyperparameter_Tuning")
+
     # Create an Optuna study to minimize the objective (validation loss).
     study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=100)  # You can increase n_trials for a more extensive search.
-
-    # Retrieve and print the best trial.
-    print("Best trial:")
-    trial = study.best_trial
-    print("  Value: {:.4f}".format(trial.value))
-    print("  Params:")
-    for key, value in trial.params.items():
-        print("    {}: {}".format(key, value))
+    
+    with mlflow.start_run(run_name="Tune Mapper Hyperparams"):
+        # You can increase n_trials for a more extensive search; keep compact for fast feedback.
+        study.optimize(objective, n_trials=5) 
+    
+        # Retrieve and print the best trial.
+        print("Best trial:")
+        trial = study.best_trial
+        print("  Value: {:.4f}".format(trial.value))
+        print("  Params:")
+        
+        best_logs = {}
+        for key, value in trial.params.items():
+            print("    {}: {}".format(key, value))
+            best_logs[f"best_{key}"] = value
+            
+        mlflow.log_params(best_logs)
+        mlflow.log_metric("best_val_loss", trial.value)
 
     # Save the best hyperparameters in JSON format.
     best_params = trial.params

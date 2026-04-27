@@ -6,3 +6,5 @@ entry_points:
       learning_rate: {type: float, default: 0.001}
       batch_size: {type: int, default: 32}
     command: "python scripts/train_mapper_decoder.py --learning_rate {learning_rate} --batch_size {batch_size}"
+  tune:
+    command: "python scripts/tune_mapper.py"
