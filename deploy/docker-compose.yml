@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+    container_name: slip_fastapi
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ../latent-faults-slipgen:/app/latent-faults-slipgen
+      - ../config.yaml:/app/config.yaml  # Mount project dir to access mlruns & assets
+    environment:
+      - MODEL_ARTIFACTS_DIR=${MODEL_ARTIFACTS_DIR}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: 
+      context: ./frontend
+    container_name: slip_react_vite
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: slip_prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: slip_alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: slip_grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/dashboards
+    depends_on:
+      - prometheus
+
+  airflow-webserver:
+    image: apache/airflow:2.7.3
+    container_name: slip_airflow
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/plugins:/opt/airflow/plugins
+      - ../:/opt/airflow/project
+    ports:
+      - "8080:8080"
+    command: bash -c "airflow db migrate && airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password admin || true && airflow webserver & airflow scheduler"

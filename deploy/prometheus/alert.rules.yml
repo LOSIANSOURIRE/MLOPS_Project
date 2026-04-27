@@ -1,0 +1,20 @@
+groups:
+  - name: MLOps_Alerts
+    rules:
+      - alert: HighInferenceLatency
+        expr: rate(inference_latency_seconds_sum[1m]) / rate(inference_latency_seconds_count[1m]) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Inference Latency"
+          description: "Average inference latency is > 0.5 seconds for the last 1 minute."
+
+      - alert: HighErrorRate
+        expr: sum(rate(fastapi_requests_total{status=~"5.."}[1m])) / sum(rate(fastapi_requests_total[1m])) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx Error Rate"
+          description: "Over 5% of requests are returning 5xx errors."
