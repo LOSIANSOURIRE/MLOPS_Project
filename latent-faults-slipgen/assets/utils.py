@@ -256,7 +256,8 @@ def pixels_to_slip(image, delta_z, image_name=None, plot=False):
 
     """
 
-    normalizing_slip_range=np.load(r"./assets/normalizing_slip_range.npy",allow_pickle=True)
+    normalizing_slip_path = os.path.join(os.path.dirname(__file__), "normalizing_slip_range.npy")
+    normalizing_slip_range=np.load(normalizing_slip_path,allow_pickle=True)
     slip_valued_image = (image * normalizing_slip_range)/delta_z
 
     if plot:
