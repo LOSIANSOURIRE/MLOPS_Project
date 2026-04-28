@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import torch
+import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 
 FEATURE_NAMES: list[str] = [
@@ -30,6 +31,105 @@ FEATURE_NAMES: list[str] = [
 ]
 
 OUTPUT_DIM = 2704
+
+
+class LatentNN(nn.Module):
+    def __init__(self, input_dim: int = 7, hidden_dims: list[int] | None = None, output_dim: int = 2704, dropout_prob: float = 0.3):
+        super().__init__()
+        hidden_dims = hidden_dims or [2048, 1024]
+        layers: list[nn.Module] = []
+        prev_dim = input_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.LayerNorm(hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout_prob))
+            prev_dim = hidden_dim
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.fc = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.fc(x)
+
+
+class VectorQuantizer(nn.Module):
+    def __init__(self, num_embeddings: int, embedding_dim: int, beta: float = 0.25):
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.beta = beta
+        self.embeddings = nn.Parameter(torch.rand(num_embeddings, embedding_dim))
+
+    def forward(self, inputs):
+        input_shape = inputs.shape
+        flat_inputs = inputs.permute(0, 2, 3, 1).contiguous().view(-1, self.embedding_dim)
+        distances = (
+            torch.sum(flat_inputs ** 2, dim=1, keepdim=True)
+            + torch.sum(self.embeddings ** 2, dim=1)
+            - 2 * torch.matmul(flat_inputs, self.embeddings.t())
+        )
+        encoding_indices = torch.argmin(distances, dim=1)
+        quantized = self.embeddings[encoding_indices]
+        quantized = quantized.view(input_shape[0], input_shape[2], input_shape[3], self.embedding_dim)
+        quantized = quantized.permute(0, 3, 1, 2).contiguous()
+        commitment_loss = nn.functional.mse_loss(quantized.detach(), inputs)
+        codebook_loss = nn.functional.mse_loss(quantized, inputs.detach())
+        loss = self.beta * commitment_loss + codebook_loss
+        quantized = inputs + (quantized - inputs).detach()
+        return quantized, loss
+
+
+class VQVAE(nn.Module):
+    def __init__(self, latent_dim: int = 16, num_embeddings: int = 128, beta: float = 0.25):
+        super().__init__()
+        self.latent_dim = latent_dim
+        self.num_embeddings = num_embeddings
+        self.beta = beta
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, latent_dim, kernel_size=1, stride=1, padding=0),
+        )
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(latent_dim, 64, kernel_size=3, stride=2, padding=1, output_padding=0),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 1, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+        )
+        self.vq_layer = VectorQuantizer(num_embeddings, latent_dim, beta)
+
+    def forward(self, x):
+        z = self.encoder(x)
+        quantized, vq_loss = self.vq_layer(z)
+        x_recon = self.decoder(quantized)
+        return x_recon, vq_loss
+
+
+class DecoderNet(nn.Module):
+    def __init__(self, model_weights_path: str | Path, device: str = "cpu"):
+        super().__init__()
+        self.device = torch.device(device)
+        self.model = VQVAE(latent_dim=16, num_embeddings=128)
+        if model_weights_path is not None:
+            state = torch.load(model_weights_path, map_location=self.device)
+            new_state = {}
+            for k, v in state.items():
+                new_state[k[len("model.") :]] = v if k.startswith("model.") else v
+            self.model.load_state_dict(new_state)
+
+    def forward(self, embedding):
+        batch_size = embedding.size(0)
+        latent = embedding.view(batch_size, 16, 13, 13)
+        return self.model.decoder(latent)
+
+
+def pixels_to_slip(image: np.ndarray, delta_z: float, normalizing_slip_range_path: Path) -> np.ndarray:
+    normalizing_slip_range = np.load(normalizing_slip_range_path, allow_pickle=True)
+    return (image * normalizing_slip_range) / delta_z
 
 
 def compute_seismic_moment(mw: float) -> float:
@@ -85,16 +185,6 @@ class InferenceOutcome:
 
 class SlipgenInferenceService:
     def __init__(self, project_root: Path, model_dir: Path):
-        # Import here to ensure sys.path is set up with PROJECT_ROOT
-        # before importing modules from the latent-faults-slipgen project.
-        from assets.utils import pixels_to_slip
-        from scripts.decoder import Decoder
-        from scripts.latent_mapper import LatentNN
-
-        self.pixels_to_slip = pixels_to_slip
-        self.Decoder = Decoder
-        self.LatentNN = LatentNN
-
         self.project_root = Path(project_root)
         self.model_dir = Path(model_dir)
         self.dataset_path = self.project_root / "Dataset" / "text_vec.npy"
@@ -150,19 +240,30 @@ class SlipgenInferenceService:
             hyperparams = json.load(handle)
 
         self.dropout_prob = float(hyperparams.get("dropout_prob", 0.0))
-        self.hidden_dims = [int(hyperparams.get("hidden_layer_1", 192))]
+        latent_state = torch.load(self.latent_weights_path, map_location=self.device)
         input_dim = self._load_dataset_matrix().shape[1]
 
-        self.latent_model = self.LatentNN(
+        inferred_hidden_dim = None
+        if isinstance(latent_state, dict):
+            first_linear_weight = latent_state.get("fc.0.weight")
+            if first_linear_weight is not None and hasattr(first_linear_weight, "shape") and len(first_linear_weight.shape) == 2:
+                inferred_hidden_dim = int(first_linear_weight.shape[0])
+
+        if inferred_hidden_dim is None:
+            raise RuntimeError("Could not infer latent hidden width from latent_model.pth")
+
+        self.hidden_dims = [inferred_hidden_dim]
+
+        self.latent_model = LatentNN(
             input_dim=input_dim,
             hidden_dims=self.hidden_dims,
             output_dim=OUTPUT_DIM,
             dropout_prob=self.dropout_prob,
         )
-        self.latent_model.load_state_dict(torch.load(self.latent_weights_path, map_location=self.device))
+        self.latent_model.load_state_dict(latent_state)
         self.latent_model.to(self.device).eval()
 
-        self.decoder = self.Decoder(model_weights_path=str(self.decoder_weights_path), device=str(self.device))
+        self.decoder = DecoderNet(model_weights_path=str(self.decoder_weights_path), device=str(self.device))
         self.decoder.to(self.device).eval()
 
         self.scaler_x = self._load_scaler()
@@ -197,9 +298,9 @@ class SlipgenInferenceService:
 
         image = np.clip(image, 0.0, 1.0)
         if req.apply_dz:
-            slip_map = self.pixels_to_slip(image, req.dz, image_name=None, plot=False)
+            slip_plane = pixels_to_slip(image, req.dz, self.normalizing_slip_range_path)
         else:
-            slip_map = image
+            slip_plane = image
 
         image_stats = {
             "min": float(image.min()),
@@ -208,15 +309,16 @@ class SlipgenInferenceService:
             "std": float(image.std()),
         }
         slip_stats = {
-            "min": float(np.min(slip_map)),
-            "max": float(np.max(slip_map)),
-            "mean": float(np.mean(slip_map)),
-            "std": float(np.std(slip_map)),
+            "min": float(np.min(slip_plane)),
+            "max": float(np.max(slip_plane)),
+            "mean": float(np.mean(slip_plane)),
+            "std": float(np.std(slip_plane)),
         }
 
         return {
             "predicted_image_2d": image.tolist(),
-            "slip_map_2d": slip_map.tolist(),
+            "slip_plane_2d": slip_plane.tolist(),
+            "slip_map_2d": slip_plane.tolist(),
             "computed_parameters": {name: float(value) for name, value in zip(FEATURE_NAMES, computed_parameters, strict=True)},
             "image_stats": image_stats,
             "slip_stats": slip_stats,

@@ -11,6 +11,7 @@ services:
     environment:
       - SLIPGEN_PROJECT_ROOT=/app/latent-faults-slipgen
       - MODEL_ARTIFACTS_DIR=/app/latent-faults-slipgen/models
+      - SLIPGEN_CONFIG_PATH=/app/config.yaml
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

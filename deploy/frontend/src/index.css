@@ -226,27 +226,107 @@ button:disabled {
   font-size: 1.15rem;
 }
 
-.heatmap-frame {
-  border-radius: 22px;
-  overflow: hidden;
+.figure-card {
+  position: relative;
+  border-radius: 26px;
+  padding: 18px 18px 16px;
+  background: linear-gradient(180deg, rgba(10, 16, 31, 0.9), rgba(8, 12, 24, 0.96));
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(4, 8, 16, 0.65);
-  min-height: 540px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-.heatmap {
+.figure-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.figure-header h3 {
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.figure-header p,
+.axis-footer,
+.colorbar-labels {
+  color: rgba(242, 246, 255, 0.68);
+}
+
+.figure-body {
   display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 86px;
+  gap: 14px;
+  align-items: center;
+}
+
+.plot-column {
+  display: grid;
+  gap: 10px;
+}
+
+.plot-shell {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(244, 161, 92, 0.1), rgba(244, 161, 92, 0.14));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  aspect-ratio: 1 / 1;
+  width: 100%;
+}
+
+.heatmap-canvas {
+  display: block;
   width: 100%;
   height: 100%;
-  aspect-ratio: 1 / 1;
 }
 
-.heatmap-cell {
-  min-height: 10px;
+.figure-empty {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.axis-label {
+  display: grid;
+  place-items: center;
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+  color: rgba(242, 246, 255, 0.66);
+}
+
+.y-axis-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.axis-footer {
+  text-align: center;
+  font-size: 0.88rem;
+}
+
+.colorbar-panel {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.colorbar-canvas {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.colorbar-labels {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  font-size: 0.84rem;
 }
 
 .empty-state {
-  min-height: 540px;
+  min-height: 100%;
   display: grid;
   place-items: center;
   color: rgba(242, 246, 255, 0.6);
@@ -284,6 +364,21 @@ button:disabled {
   .hero {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .figure-body {
+    grid-template-columns: 1fr;
+  }
+
+  .y-axis-label {
+    writing-mode: initial;
+    transform: none;
+    order: 2;
+  }
+
+  .colorbar-panel {
+    grid-template-columns: auto auto;
+    justify-content: start;
   }
 }
 

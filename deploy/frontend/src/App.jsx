@@ -1,11 +1,47 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-function valueToColor(value) {
-  const clamped = Math.max(0, Math.min(1, value))
-  const hue = 205 - clamped * 180
-  return `hsl(${hue}, 85%, ${18 + clamped * 48}%)`
+const VIRIDIS_STOPS = [
+  [0.0, [68, 1, 84]],
+  [0.13, [72, 35, 116]],
+  [0.25, [64, 67, 135]],
+  [0.38, [52, 94, 141]],
+  [0.5, [41, 120, 142]],
+  [0.63, [32, 144, 140]],
+  [0.75, [34, 167, 132]],
+  [0.88, [68, 190, 112]],
+  [1.0, [253, 231, 37]],
+]
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value))
+}
+
+function interpolateColor(a, b, t) {
+  return a.map((channel, index) => Math.round(channel + (b[index] - channel) * t))
+}
+
+function viridisColor(value) {
+  const clamped = clamp01(value)
+  for (let index = 0; index < VIRIDIS_STOPS.length - 1; index += 1) {
+    const [startPos, startColor] = VIRIDIS_STOPS[index]
+    const [endPos, endColor] = VIRIDIS_STOPS[index + 1]
+    if (clamped >= startPos && clamped <= endPos) {
+      const span = endPos - startPos || 1
+      const localT = (clamped - startPos) / span
+      const [r, g, b] = interpolateColor(startColor, endColor, localT)
+      return `rgb(${r}, ${g}, ${b})`
+    }
+  }
+  const [r, g, b] = VIRIDIS_STOPS[VIRIDIS_STOPS.length - 1][1]
+  return `rgb(${r}, ${g}, ${b})`
+}
+
+function buildTicks(maxValue) {
+  if (!Number.isFinite(maxValue) || maxValue <= 0) return [0]
+  const count = 5
+  return Array.from({ length: count }, (_, index) => (maxValue * index) / (count - 1))
 }
 
 function App() {
@@ -25,10 +61,178 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
+  const heatmapCanvasRef = useRef(null)
+  const colorbarCanvasRef = useRef(null)
 
-  const slipMap = result?.slip_map_2d || []
+  const slipMap = result?.slip_plane_2d || result?.slip_map_2d || []
   const rows = slipMap.length
   const cols = slipMap[0]?.length || 0
+  const minValue = Number(result?.slip_stats?.min ?? 0)
+  const maxValue = Number(result?.slip_stats?.max ?? 1)
+  const usePhysicalCoords = Boolean(result && applyDz)
+  const axisLabelX = usePhysicalCoords ? 'Along-strike direction (km)' : 'Pixel columns'
+  const axisLabelY = usePhysicalCoords ? 'Down-dip direction (km)' : 'Pixel rows'
+  const colorbarLabel = usePhysicalCoords ? 'Slip (m)' : 'Normalized intensity'
+
+  useEffect(() => {
+    const canvas = heatmapCanvasRef.current
+    if (!canvas || !rows || !cols) return
+
+    const pixelRatio = window.devicePixelRatio || 1
+    const displaySize = Math.max(550, Math.min(900, canvas.clientWidth || 800, canvas.clientHeight || 800))
+    
+    // Allocate space for axis labels
+    const totalSize = displaySize + 60 // Extra 60px for labels
+    canvas.width = Math.floor(totalSize * pixelRatio)
+    canvas.height = Math.floor(totalSize * pixelRatio)
+    canvas.style.width = '100%'
+    canvas.style.height = '100%'
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+    ctx.clearRect(0, 0, totalSize, totalSize)
+    
+    // Light background
+    ctx.fillStyle = 'rgba(20, 24, 36, 0.5)'
+    ctx.fillRect(0, 0, totalSize, totalSize)
+
+    const padding = { top: 20, right: 20, bottom: 40, left: 50 }
+    const plotSize = displaySize - padding.left - padding.right
+    const cellSize = plotSize / cols
+
+    const sourceCanvas = document.createElement('canvas')
+    sourceCanvas.width = cols
+    sourceCanvas.height = rows
+    const sourceCtx = sourceCanvas.getContext('2d')
+    if (!sourceCtx) return
+
+    const imageData = sourceCtx.createImageData(cols, rows)
+    const denominator = maxValue - minValue || 1
+
+    for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+      for (let colIndex = 0; colIndex < cols; colIndex += 1) {
+        const value = Number(slipMap[rowIndex][colIndex])
+        const normalized = clamp01((value - minValue) / denominator)
+        const [red, green, blue] = viridisColor(normalized)
+          .match(/\d+/g)
+          .map((channel) => Number.parseInt(channel, 10))
+        const offset = (rowIndex * cols + colIndex) * 4
+        imageData.data[offset] = red
+        imageData.data[offset + 1] = green
+        imageData.data[offset + 2] = blue
+        imageData.data[offset + 3] = 255
+      }
+    }
+
+    sourceCtx.putImageData(imageData, 0, 0)
+    ctx.imageSmoothingEnabled = true
+    ctx.drawImage(sourceCanvas, padding.left, padding.top, plotSize, plotSize)
+
+    // Draw grid lines
+    ctx.strokeStyle = 'rgba(12, 16, 28, 0.15)'
+    ctx.lineWidth = 1
+    for (let colIndex = 1; colIndex < cols; colIndex += 1) {
+      const x = padding.left + colIndex * cellSize
+      ctx.beginPath()
+      ctx.moveTo(x, padding.top)
+      ctx.lineTo(x, padding.top + plotSize)
+      ctx.stroke()
+    }
+    for (let rowIndex = 1; rowIndex < rows; rowIndex += 1) {
+      const y = padding.top + rowIndex * cellSize
+      ctx.beginPath()
+      ctx.moveTo(padding.left, y)
+      ctx.lineTo(padding.left + plotSize, y)
+      ctx.stroke()
+    }
+
+    // Draw plot border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
+    ctx.lineWidth = 2
+    ctx.strokeRect(padding.left - 1, padding.top - 1, plotSize + 2, plotSize + 2)
+
+    // Draw axis tick labels
+    ctx.fillStyle = 'rgba(242, 246, 255, 1)'
+    ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+
+    // X-axis ticks at bottom
+    const xTickCount = 6
+    for (let i = 0; i < xTickCount; i += 1) {
+      const colIndex = Math.round((i / (xTickCount - 1)) * (cols - 1))
+      const x = padding.left + (colIndex * plotSize) / (cols - 1)
+      const label = colIndex.toString()
+      ctx.fillText(label, x, padding.top + plotSize + 8)
+    }
+
+    // Y-axis ticks at left
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'middle'
+    const yTickCount = 6
+    for (let i = 0; i < yTickCount; i += 1) {
+      const rowIndex = Math.round((i / (yTickCount - 1)) * (rows - 1))
+      const y = padding.top + (rowIndex * plotSize) / (rows - 1)
+      const label = rowIndex.toString()
+      ctx.fillText(label, padding.left - 12, y)
+    }
+  }, [cols, maxValue, minValue, rows, slipMap, usePhysicalCoords])
+
+  useEffect(() => {
+    const canvas = colorbarCanvasRef.current
+    if (!canvas) return
+
+    const pixelRatio = window.devicePixelRatio || 1
+    const barWidth = 48
+    const height = 420
+    const textWidth = 70
+    const totalWidth = barWidth + textWidth
+    
+    canvas.width = Math.floor(totalWidth * pixelRatio)
+    canvas.height = Math.floor(height * pixelRatio)
+    canvas.style.width = `${totalWidth}px`
+    canvas.style.height = `${height}px`
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+    
+    // Draw background panel for better visibility
+    ctx.fillStyle = 'rgba(20, 24, 36, 0.4)'
+    ctx.fillRect(-5, -5, totalWidth + 10, height + 10)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(-5, -5, totalWidth + 10, height + 10)
+    
+    // Draw gradient colorbar
+    const gradient = ctx.createLinearGradient(0, height, 0, 0)
+    for (let index = 0; index < VIRIDIS_STOPS.length; index += 1) {
+      const [position, color] = VIRIDIS_STOPS[index]
+      gradient.addColorStop(position, `rgb(${color[0]}, ${color[1]}, ${color[2]})`)
+    }
+    ctx.fillStyle = gradient
+    ctx.fillRect(8, 8, barWidth, height - 16)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'
+    ctx.lineWidth = 2
+    ctx.strokeRect(8, 8, barWidth, height - 16)
+
+    // Draw colorbar tick values with better visibility
+    ctx.fillStyle = 'rgba(242, 246, 255, 1)'
+    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+
+    const tickCount = 6
+    for (let i = 0; i < tickCount; i += 1) {
+      const y = 8 + (i / (tickCount - 1)) * (height - 16)
+      const value = maxValue - (i / (tickCount - 1)) * (maxValue - minValue)
+      const label = value.toFixed(1)
+      ctx.fillText(label, barWidth + 16, y)
+    }
+  }, [result, minValue, maxValue])
 
   const summaryCards = useMemo(() => {
     if (!result) return []
@@ -157,34 +361,46 @@ function App() {
             ))}
           </div>
 
-          <div className="heatmap-frame">
-            {slipMap.length ? (
-              <div
-                className="heatmap"
-                style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-              >
-                {slipMap.flatMap((row, rowIndex) =>
-                  row.map((value, colIndex) => (
-                    <div
-                      key={`${rowIndex}-${colIndex}`}
-                      className="heatmap-cell"
-                      title={`(${rowIndex}, ${colIndex}) = ${Number(value).toFixed(4)}`}
-                      style={{ background: valueToColor(value) }}
-                    />
-                  ))
-                )}
+          <div className="figure-card">
+            <div className="figure-header">
+              <div>
+                <h3>Slip distribution</h3>
+                <p>{rows && cols ? `Grid ${rows} x ${cols}` : 'Waiting for a prediction'}</p>
               </div>
-            ) : (
-              <div className="empty-state">
-                <p>The prediction heatmap will appear here.</p>
+            </div>
+
+            <div className="figure-body">
+              <div className="axis-label y-axis-label">{axisLabelY}</div>
+              <div className="plot-column">
+                <div className="plot-shell">
+                  {slipMap.length ? (
+                    <canvas ref={heatmapCanvasRef} className="heatmap-canvas" />
+                  ) : (
+                    <div className="empty-state figure-empty">
+                      <p>The prediction heatmap will appear here.</p>
+                    </div>
+                  )}
+                </div>
+                <div className="axis-footer">
+                  <span>{axisLabelX}</span>
+                </div>
               </div>
-            )}
+
+              <aside className="colorbar-panel">
+                <canvas ref={colorbarCanvasRef} className="colorbar-canvas" />
+                <div className="colorbar-labels">
+                  <span>{Number(maxValue).toFixed(2)}</span>
+                  <span>{colorbarLabel}</span>
+                  <span>{Number(minValue).toFixed(2)}</span>
+                </div>
+              </aside>
+            </div>
           </div>
 
           {result ? (
             <details className="json-panel">
               <summary>Model response</summary>
-              <pre>{JSON.stringify({ model_info: result.model_info, image_stats: result.image_stats, slip_stats: result.slip_stats, computed_parameters: result.computed_parameters }, null, 2)}</pre>
+              <pre>{JSON.stringify({ model_info: result.model_info, image_stats: result.image_stats, slip_stats: result.slip_stats, computed_parameters: result.computed_parameters, slip_plane_2d: result.slip_plane_2d }, null, 2)}</pre>
             </details>
           ) : null}
         </section>
