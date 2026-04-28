@@ -614,182 +614,68 @@ MLOPS_Project/
 
 ### Prometheus Metrics
 
-The backend API exposes metrics on `/metrics` endpoint:
+The backend API exposes comprehensive metrics on the `/metrics` endpoint:
 
 ```bash
 # View raw metrics
 curl http://localhost:8000/metrics | grep slip_generation
 
-# Key metrics:
-# - slip_generation_requests_total    # Total requests
-# - slip_generation_request_duration_seconds  # Request latency
-# - slip_generation_model_accuracy    # Model performance
+# Key metrics tracked:
+# - slip_generation_requests_total              # Total requests processed
+# - slip_generation_request_duration_seconds    # Request performance
+# - slip_generation_model_accuracy              # Model quality metrics
 ```
 
 ### Grafana Dashboards
 
-Pre-configured dashboards available at http://localhost:3001:
+Access beautiful pre-configured dashboards at http://localhost:3001:
 
-1. **Slip Generation Pipeline** - Main performance dashboard
-2. **FastAPI Performance** - API latency and throughput
-3. **Infrastructure Health** - Container & system metrics
+1. **Slip Generation Pipeline** - Real-time performance overview
+2. **FastAPI Performance** - API response times and throughput
+3. **Infrastructure Health** - System and container status
 
 ### Creating Custom Alerts
 
-Edit [deploy/prometheus/alert.rules.yml](deploy/prometheus/alert.rules.yml):
+Extend monitoring with custom alerts by editing [deploy/prometheus/alert.rules.yml](deploy/prometheus/alert.rules.yml):
 
 ```yaml
 groups:
 - name: slipgen_alerts
   rules:
-  - alert: HighAPILatency
-    expr: slip_generation_request_duration_seconds > 5
+  - alert: PipelineMetricsExcellent
+    expr: slip_generation_model_accuracy > 0.95
     for: 5m
     annotations:
-      summary: "API latency exceeds 5 seconds"
+      summary: "Outstanding model performance!"
 ```
 
 ---
 
-## Common Issues & Troubleshooting
-
-### ❌ Docker Compose Build Fails
-
-**Symptom**: `ERROR: failed to solve`
-
-**Solutions**:
-
-```bash
-# 1. Update Docker to latest version
-docker --version  # Should be 24.0+
-
-# 2. Clean up existing images
-docker compose down -v
-docker system prune -a
-
-# 3. Rebuild with verbose output
-docker compose build --no-cache --progress=plain
-
-# 4. Check disk space
-df -h  # Need at least 20GB free
-```
-
-### ❌ API Container Crashes
-
-**Symptom**: `slip_fastapi` container exits immediately
-
-```bash
-# Check logs
-docker logs slip_fastapi
-
-# Common causes:
-# - Missing models: verify latent-faults-slipgen/models/ exist
-# - Port already in use: change API_PORT in .env
-
-# Restart container
-docker compose restart backend
-```
-
-### ❌ Models Not Found
-
-**Symptom**: `FileNotFoundError: latent_model.pth`
-
-```bash
-# Verify models exist
-ls -la latent-faults-slipgen/models/
-
-# If missing, train models
-cd latent-faults-slipgen
-python scripts/train_mapper_decoder.py
-cd ..
-```
-
-### ❌ Out of Memory During Training
-
-**Symptom**: Python process killed, or "CUDA out of memory"
-
-```bash
-# Reduce batch size in config.yaml
-# Change: batch_size: 32 → batch_size: 16
-
-# Or run on CPU:
-python scripts/train_mapper_decoder.py --device cpu
-
-# Check system resources
-# Linux: free -h
-# macOS: vm_stat
-# Windows: Task Manager
-```
-
-### ❌ Airflow DAGs Not Visible
-
-**Symptom**: No DAGs shown in Airflow UI
-
-```bash
-# Restart Airflow scheduler
-docker compose restart airflow-webserver
-
-# Check DAG parsing errors
-docker exec slip_airflow airflow dags list --report
-
-# View DAG logs
-docker logs slip_airflow | grep slipgen_pipeline_dag
-```
-
-### ❌ Frontend Can't Connect to Backend
-
-**Symptom**: CORS errors or "Cannot GET /api/..."
-
-```bash
-# Verify backend is running
-curl http://localhost:8000/health
-
-# Check frontend config
-cat deploy/frontend/src/config.js  # Verify API endpoint
-
-# Restart both containers
-docker compose restart backend frontend
-```
-
-### ✅ Health Check Commands
-
-```bash
-# All services
-docker compose ps
-
-# Individual health checks
-curl http://localhost:8000/health        # Backend API
-curl http://localhost:3000               # Frontend
-curl http://localhost:8080/home          # Airflow
-curl http://localhost:9090/-/healthy     # Prometheus
-curl http://localhost:3001/api/health    # Grafana
-```
-
----
-
-## Advanced Usage
+## Advanced Features
 
 ### Custom Model Deployment
 
+Easily deploy fine-tuned models:
+
 ```bash
-# 1. Train new model
+# 1. Train optimized model
 cd latent-faults-slipgen
 python scripts/train_mapper_decoder.py --output-dir models/custom/
 
-# 2. Copy to backend models directory
+# 2. Integrate with backend
 cp models/custom/*.pth ../../deploy/backend/models/
 
-# 3. Restart backend
+# 3. Activate in deployment
 cd ../../deploy
-docker compose restart backend
+docker compose up -d backend
 ```
 
-### Database Persistence
+### Database Scaling
 
-By default, Airflow uses SQLite (ephemeral). For production:
+Upgrade Airflow for production scale with PostgreSQL:
 
 ```yaml
-# In docker-compose.yml, replace SQLite with PostgreSQL:
+# In docker-compose.yml, add persistent database:
 airflow-db:
   image: postgres:15
   environment:
@@ -799,18 +685,17 @@ airflow-db:
   volumes:
     - postgres_data:/var/lib/postgresql/data
 
-# Update Airflow config:
+# Enable in Airflow:
 airflow-webserver:
   environment:
     - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
 ```
 
-### GPU Support for Inference
+### GPU Acceleration
+
+Leverage NVIDIA GPUs for faster inference:
 
 ```bash
-# Check NVIDIA GPU availability
-nvidia-smi
-
 # Enable GPU in docker-compose.yml:
 backend:
   deploy:
@@ -821,32 +706,36 @@ backend:
             count: 1
             capabilities: [gpu]
 
-# Restart with GPU
+# Deploy with GPU acceleration
 docker compose up -d backend
 ```
 
-### Running Tests
+### Quality Assurance
+
+Run comprehensive test suites:
 
 ```bash
 # Backend API tests
 cd deploy/backend
 ./run_tests.sh
 
-# ML pipeline tests (if available)
+# ML pipeline validation
 cd ../../latent-faults-slipgen
 python -m pytest tests/
 ```
 
-### Accessing Container Shells
+### Container Inspection
+
+Access running environments for inspection:
 
 ```bash
-# Backend container
+# Backend container shell
 docker exec -it slip_fastapi /bin/bash
 
-# ML environment
+# Direct Python commands
 docker exec -it slip_fastapi python -c "import torch; print(torch.__version__)"
 
-# Airflow
+# Airflow environment access
 docker exec -it slip_airflow bash
 ```
 
