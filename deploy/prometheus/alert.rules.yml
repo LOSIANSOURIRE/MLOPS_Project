@@ -1,20 +1,38 @@
 groups:
   - name: MLOps_Alerts
     rules:
-      - alert: HighInferenceLatency
-        expr: rate(inference_latency_seconds_sum[1m]) / rate(inference_latency_seconds_count[1m]) > 0.5
-        for: 1m
+      - alert: BackendDown
+        expr: up{job="fastapi_monitoring"} == 0
+        for: 30s
         labels:
-          severity: warning
+          severity: critical
         annotations:
-          summary: "High Inference Latency"
-          description: "Average inference latency is > 0.5 seconds for the last 1 minute."
+          summary: "Slipgen backend is down"
+          description: "Prometheus cannot scrape the FastAPI backend on /metrics."
 
-      - alert: HighErrorRate
-        expr: sum(rate(fastapi_requests_total{status=~"5.."}[1m])) / sum(rate(fastapi_requests_total[1m])) > 0.05
+      - alert: ModelNotReady
+        expr: slipgen_model_ready == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "High 5xx Error Rate"
-          description: "Over 5% of requests are returning 5xx errors."
+          summary: "Slipgen model failed to load"
+          description: "The backend started, but the torch model or scaler is not ready."
+
+      - alert: HighInferenceLatency
+        expr: histogram_quantile(0.95, sum(rate(slipgen_inference_duration_seconds_bucket[5m])) by (le)) > 1.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High inference latency"
+          description: "The 95th percentile inference latency is above 1.5s for 2 minutes."
+
+      - alert: HighErrorRate
+        expr: sum(rate(slipgen_api_requests_total{status="error"}[5m])) / clamp_min(sum(rate(slipgen_api_requests_total[5m])), 1) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High backend error rate"
+          description: "More than 5% of backend requests are failing over a 5 minute window."
